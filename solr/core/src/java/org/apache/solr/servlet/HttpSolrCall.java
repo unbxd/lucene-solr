@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -136,6 +137,8 @@ public class HttpSolrCall {
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   static final Random random;
+  public static final String INTERNAL_REQUEST_COUNT = "_forwardedCount";
+
   static {
     // We try to make things reproducible in the context of our tests by initializing the random instance
     // based on the current seed
@@ -435,7 +438,8 @@ public class HttpSolrCall {
     }
   }
 
-  protected void extractRemotePath(String corename, String origCorename, int idx) throws UnsupportedEncodingException, KeeperException, InterruptedException {
+  protected void extractRemotePath(String corename, String origCorename, int idx) throws UnsupportedEncodingException,
+      KeeperException, InterruptedException, SolrException {
     if (core == null && idx > 0) {
       coreUrl = getRemotCoreUrl(corename, origCorename);
       // don't proxy for internal update requests
@@ -460,6 +464,16 @@ public class HttpSolrCall {
         }
       }
     }
+  }
+
+  /**
+   * This method returns query string with internal request count (number of remote queries for a given request)
+   */
+  private String getQueryString(){
+    int internalRequestCount = queryParams.getInt(INTERNAL_REQUEST_COUNT, 0);
+    ModifiableSolrParams updatedQueryParams = new ModifiableSolrParams(queryParams);
+    updatedQueryParams.set(INTERNAL_REQUEST_COUNT, internalRequestCount + 1);
+    return updatedQueryParams.toQueryString();
   }
 
   /**
@@ -593,7 +607,8 @@ public class HttpSolrCall {
     HttpRequestBase method = null;
     HttpEntity httpEntity = null;
     try {
-      String urlstr = coreUrl + queryParams.toQueryString();
+      // get query string with internal request count
+      String urlstr = coreUrl + getQueryString();
 
       boolean isPostOrPutRequest = "POST".equals(req.getMethod()) || "PUT".equals(req.getMethod());
       if ("GET".equals(req.getMethod())) {
@@ -925,7 +940,17 @@ public class HttpSolrCall {
     String coreUrl = getCoreUrl(collectionName, origCorename, clusterState,
         slices, byCoreName, true);
 
+    int totalReplicas = 0;
+    for (Slice slice : slices){
+      totalReplicas += slice.getReplicas().size();
+    }
+
+    // avoid making mutually recursive calls to remote nodes
     if (coreUrl == null) {
+      if(queryParams.getInt(INTERNAL_REQUEST_COUNT, 0) > totalReplicas){
+        throw new SolrException(SolrException.ErrorCode.INVALID_STATE,
+            String.format(Locale.ROOT, "No active replicas found for collection: %s", collectionName));
+      }
       coreUrl = getCoreUrl(collectionName, origCorename, clusterState,
           slices, byCoreName, false);
     }
