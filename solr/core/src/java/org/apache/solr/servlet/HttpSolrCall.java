@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -136,6 +137,8 @@ public class HttpSolrCall {
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   static final Random random;
+  public static final String INTERNAL_REQUEST_COUNT = "solr.internalRequestCount";
+
   static {
     // We try to make things reproducible in the context of our tests by initializing the random instance
     // based on the current seed
@@ -435,7 +438,8 @@ public class HttpSolrCall {
     }
   }
 
-  protected void extractRemotePath(String corename, String origCorename, int idx) throws UnsupportedEncodingException, KeeperException, InterruptedException {
+  protected void extractRemotePath(String corename, String origCorename, int idx) throws UnsupportedEncodingException,
+      KeeperException, InterruptedException, SolrException {
     if (core == null && idx > 0) {
       coreUrl = getRemotCoreUrl(corename, origCorename);
       // don't proxy for internal update requests
@@ -460,6 +464,13 @@ public class HttpSolrCall {
         }
       }
     }
+  }
+
+  private String getQueryStingWithInternalRequestCount(){
+    int internalRequestCount = queryParams.getInt(INTERNAL_REQUEST_COUNT, 0);
+    ModifiableSolrParams updatedQueryParams = new ModifiableSolrParams(queryParams);
+    updatedQueryParams.set(INTERNAL_REQUEST_COUNT, internalRequestCount + 1);
+    return updatedQueryParams.toQueryString();
   }
 
   /**
@@ -593,7 +604,7 @@ public class HttpSolrCall {
     HttpRequestBase method = null;
     HttpEntity httpEntity = null;
     try {
-      String urlstr = coreUrl + queryParams.toQueryString();
+      String urlstr = coreUrl + getQueryStingWithInternalRequestCount();
 
       boolean isPostOrPutRequest = "POST".equals(req.getMethod()) || "PUT".equals(req.getMethod());
       if ("GET".equals(req.getMethod())) {
@@ -880,11 +891,13 @@ public class HttpSolrCall {
     return core;
   }
 
-  private void getSlicesForCollections(ClusterState clusterState,
+  private int getSlicesAndReplicationFactorForCollections(ClusterState clusterState,
                                        Collection<Slice> slices, boolean activeSlices) {
+    int replicationFactor = 3;
     if (activeSlices) {
       for (Map.Entry<String, DocCollection> entry : clusterState.getCollectionsMap().entrySet()) {
         final Collection<Slice> activeCollectionSlices = entry.getValue().getActiveSlices();
+        replicationFactor = entry.getValue().getReplicationFactor();
         if (activeCollectionSlices != null) {
           slices.addAll(activeCollectionSlices);
         }
@@ -892,25 +905,29 @@ public class HttpSolrCall {
     } else {
       for (Map.Entry<String, DocCollection> entry : clusterState.getCollectionsMap().entrySet()) {
         final Collection<Slice> collectionSlices = entry.getValue().getSlices();
+        replicationFactor = entry.getValue().getReplicationFactor();
         if (collectionSlices != null) {
           slices.addAll(collectionSlices);
         }
       }
     }
+    return replicationFactor;
   }
 
   private String getRemotCoreUrl(String collectionName, String origCorename) {
     ClusterState clusterState = cores.getZkController().getClusterState();
     Collection<Slice> slices = clusterState.getActiveSlices(collectionName);
+    final DocCollection docCollection = clusterState.getCollectionOrNull(collectionName);
+    int replicationFactor = (docCollection != null) ? docCollection.getReplicationFactor() : 0;
     boolean byCoreName = false;
 
     if (slices == null) {
       slices = new ArrayList<>();
       // look by core name
       byCoreName = true;
-      getSlicesForCollections(clusterState, slices, true);
+      replicationFactor = getSlicesAndReplicationFactorForCollections(clusterState, slices, true);
       if (slices.isEmpty()) {
-        getSlicesForCollections(clusterState, slices, false);
+        replicationFactor = getSlicesAndReplicationFactorForCollections(clusterState, slices, false);
       }
     }
 
@@ -925,7 +942,13 @@ public class HttpSolrCall {
     String coreUrl = getCoreUrl(collectionName, origCorename, clusterState,
         slices, byCoreName, true);
 
+    int replicaCount = slices.size() * replicationFactor;
+    // avoid making mutually recursive calls to remote nodes
     if (coreUrl == null) {
+      if(queryParams.getInt(INTERNAL_REQUEST_COUNT, 0) > replicaCount){
+        throw new SolrException(SolrException.ErrorCode.INVALID_STATE,
+            String.format(Locale.ROOT, "No active replicas found for collection: %s", collectionName));
+      }
       coreUrl = getCoreUrl(collectionName, origCorename, clusterState,
           slices, byCoreName, false);
     }
