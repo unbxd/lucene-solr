@@ -61,9 +61,11 @@ public class TestQueryingOnDownCollection extends SolrCloudTestCase {
     }
     update.commit(cluster.getSolrClient(), COLLECTION_NAME);
 
+    SolrClient client = cluster.getJettySolrRunner(0).newClient();
+
     // bring down replicas but keep nodes up, this can done by performing various combinations of collections api operations
     // to make it faster, setting state.json directly
-    downAllReplicas();
+    updateCollectionState(Replica.State.DOWN);
 
     // assert all replicas are in down state
     List<Replica> replicas = getCollectionState(COLLECTION_NAME).getReplicas();
@@ -74,10 +76,40 @@ public class TestQueryingOnDownCollection extends SolrCloudTestCase {
     // assert all nodes as active
     assertEquals(3, cluster.getSolrClient().getClusterStateProvider().liveNodes().size());
 
-    SolrClient client = cluster.getJettySolrRunner(0).newClient();
-
     // This will bring down nodes with infected collection without SOLR-13793 fix
     SolrException error = expectThrows(SolrException.class,
+        () -> client.query(COLLECTION_NAME, new SolrQuery("*:*").setRows(0))
+    );
+
+    // test for all replicas in recovering state
+    updateCollectionState(Replica.State.RECOVERING);
+    // assert all replicas are in down state
+    replicas = getCollectionState(COLLECTION_NAME).getReplicas();
+    for (Replica replica: replicas){
+      assertEquals(replica.getState(), Replica.State.RECOVERING);
+    }
+
+    // assert all nodes as active
+    assertEquals(3, cluster.getSolrClient().getClusterStateProvider().liveNodes().size());
+
+    // This will bring down nodes with infected collection without SOLR-13793 fix
+    error = expectThrows(SolrException.class,
+        () -> client.query(COLLECTION_NAME, new SolrQuery("*:*").setRows(0))
+    );
+
+    // test for all replicas in recovery_failed state
+    updateCollectionState(Replica.State.RECOVERY_FAILED);
+    // assert all replicas are in down state
+    replicas = getCollectionState(COLLECTION_NAME).getReplicas();
+    for (Replica replica: replicas){
+      assertEquals(replica.getState(), Replica.State.RECOVERY_FAILED);
+    }
+
+    // assert all nodes as active
+    assertEquals(3, cluster.getSolrClient().getClusterStateProvider().liveNodes().size());
+
+    // This will bring down nodes with infected collection without SOLR-13793 fix
+    error = expectThrows(SolrException.class,
         () -> client.query(COLLECTION_NAME, new SolrQuery("*:*").setRows(0))
     );
 
@@ -88,7 +120,7 @@ public class TestQueryingOnDownCollection extends SolrCloudTestCase {
 
   }
 
-  private void downAllReplicas() throws Exception {
+  private void updateCollectionState(Replica.State state) throws Exception {
     byte[] collectionState = cluster.getZkClient().getData("/collections/" + COLLECTION_NAME + "/state.json",
         null, null, true);
 
@@ -97,7 +129,7 @@ public class TestQueryingOnDownCollection extends SolrCloudTestCase {
     for(Map.Entry<String, Object> shard: shards.entrySet()) {
       Map<String, Object> replicas = (Map<String, Object>) ((Map<String, Object>) shard.getValue() ).get("replicas");
       for (Map.Entry<String, Object> replica : replicas.entrySet()) {
-        ((Map<String, Object>) replica.getValue()).put("state", Replica.State.DOWN.toString());
+        ((Map<String, Object>) replica.getValue()).put("state", state.toString());
       }
     }
 
