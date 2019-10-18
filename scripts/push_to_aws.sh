@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # remove v or V from the tag if present
-VERSION=${TRAVIS_TAG#(v|V)}
+VERSION=${TRAVIS_TAG//v/}
 
 echo "pushing solr package to s3"
 

@@ -9,7 +9,7 @@ echo ""
 PWD="$(pwd)"
 LUCENE_DIRECTORY="$PWD"
 SOLR_DIR="$PWD/solr"
-SOLR_BASE_VERSION=${TRAVIS_TAG#(v|V)}
+SOLR_BASE_VERSION=${TRAVIS_TAG//v/}
 
 # Echo For DEBUG
 echo "PWD: $PWD"
