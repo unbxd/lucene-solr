@@ -29,9 +29,12 @@ Apache UIMA 2.3.1
 Apache ZooKeeper 3.4.10
 Jetty 9.3.14.v20161028
 
+Bug Fixes
+----------------------
 
-(No Changes)
-
+* SOLR-13793: HttpSolrCall now maintains internal request count (_forwardedCount) for remote queries and limits them to
+  the number of replicas. This avoids making too many cascading calls to remote servers, which, if not restricted, can
+  bring down nodes containing the said collection (Kesharee Nandan Vishwakarma)
 
 ==================  6.6.6 ==================
 
