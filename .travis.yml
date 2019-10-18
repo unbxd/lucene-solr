@@ -28,7 +28,7 @@ before_install:
 script:
 - "./scripts/build.sh"
 - cd solr
-- docker build --build-arg SOLR_VERSION=${TRAVIS_TAG#(v|V)}-unbxd -t solr:latest .
+- docker build --build-arg SOLR_VERSION=${TRAVIS_TAG//v/}-unbxd -t solr:latest .
 after_success:
 - export PATH=$PATH:$HOME/.local/bin
 - which -a aws
