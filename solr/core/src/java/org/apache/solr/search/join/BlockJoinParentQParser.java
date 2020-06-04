@@ -79,7 +79,7 @@ public class BlockJoinParentQParser extends QParser {
     return getCachedFilter(req, parentList);
   }
 
-  static BitDocIdSetFilterWrapper getCachedFilter(final SolrQueryRequest request, Query parentList) {
+  public static BitDocIdSetFilterWrapper getCachedFilter(final SolrQueryRequest request, Query parentList) {
     SolrCache parentCache = request.getSearcher().getCache(CACHE_NAME);
     // lazily retrieve from solr cache
     Filter filter = null;
@@ -117,7 +117,7 @@ public class BlockJoinParentQParser extends QParser {
   }
 
   // We need this wrapper since BitDocIdSetFilter does not extend Filter
-  static class BitDocIdSetFilterWrapper extends Filter {
+  public static class BitDocIdSetFilterWrapper extends Filter {
 
     final BitSetProducer filter;
 
@@ -132,6 +132,10 @@ public class BlockJoinParentQParser extends QParser {
         return null;
       }
       return BitsFilteredDocIdSet.wrap(new BitDocIdSet(set), acceptDocs);
+    }
+
+    public BitSetProducer getFilter() {
+      return filter;
     }
 
     @Override

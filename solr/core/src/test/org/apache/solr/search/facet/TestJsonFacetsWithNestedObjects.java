@@ -62,6 +62,10 @@ public class TestJsonFacetsWithNestedObjects extends SolrTestCaseHS{
             "comment_t", "This book was too long."));
     client.add(book1, null);
 
+    if (rarely()) {
+      client.commit();
+    }
+
     SolrInputDocument book2 = sdoc(
         "id",         "book2",
         "type_s",     "book",
@@ -233,9 +237,13 @@ public class TestJsonFacetsWithNestedObjects extends SolrTestCaseHS{
   public void testUniqueBlock() throws Exception {
     final Client client = Client.localClient();
     ModifiableSolrParams p = params("rows","0");
+
+    // unique block using field and query logic
     client.testJQ(params(p, "q", "{!parent tag=top which=type_s:book v=$childquery}"
         , "childquery", "comment_t:*"
         , "fl", "id", "fl" , "title_t"
+        , "root", "_root_"
+        , "parentQuery", "type_s:book"
         , "json.facet", "{" +
             "  types: {" +
             "    domain: { blockChildren:\"type_s:book\"" +
@@ -245,14 +253,21 @@ public class TestJsonFacetsWithNestedObjects extends SolrTestCaseHS{
             + "  limit:-1," +
             "    facet: {" +
             "           in_old__books: \"unique(_root_)\", " +
-            "           in_books: \"uniqueBlock(_root_)\" }" +
+            "           in_books1: \"uniqueBlock(_root_)\"," + // field logic
+            "           in_books2: \"uniqueBlock($root)\"," + // field reference logic
+            "           via_query1:\"uniqueBlock({!v=type_s:book})\", " + // query logic
+            "           via_query2:\"uniqueBlock({!v=$parentQuery})\" ," + // query reference logic
+            "           partial_query:\"uniqueBlock({!v=cat_s:fantasy})\" ," + // first doc hit only, never count afterwards
+            "           query_no_match:\"uniqueBlock({!v=cat_s:horor})\" }" +
             "  }" +
             "}" )
 
         , "response=={numFound:2,start:0,docs:[]}"
         , "facets=={ count:2," +
             "types:{" +
-            "    buckets:[ {val:review,    count:5, in_old__books:2, in_books:2} ]}" +
+            "    buckets:[ {val:review,    count:5, in_old__books:2, in_books1:2, in_books2:2,"
+            + "                                  via_query1:2, via_query2:2, "
+            + "                                  partial_query:1, query_no_match:0} ]}" +
             "}"
     );
   }

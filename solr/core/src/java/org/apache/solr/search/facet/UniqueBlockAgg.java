@@ -23,12 +23,9 @@ import java.util.Arrays;
 import org.apache.lucene.index.MultiDocValues;
 import org.apache.solr.schema.SchemaField;
 
-/**
- * @author munendrasn
- */
 public abstract class UniqueBlockAgg extends UniqueAgg {
 
-  private final static String uniqueBlock = "uniqueBlock";
+  private static final String uniqueBlock = "uniqueBlock";
 
   protected static class UniqueBlockSlotAcc extends UniqueSinglevaluedSlotAcc {
 

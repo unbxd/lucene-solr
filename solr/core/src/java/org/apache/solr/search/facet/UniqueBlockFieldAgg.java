@@ -21,9 +21,6 @@ import java.io.IOException;
 
 import org.apache.solr.schema.SchemaField;
 
-/**
- * @author munendrasn
- */
 public class UniqueBlockFieldAgg extends UniqueBlockAgg {
 
   public UniqueBlockFieldAgg(String field) {
@@ -42,7 +39,6 @@ public class UniqueBlockFieldAgg extends UniqueBlockAgg {
         throw new IllegalArgumentException(name+"("+fieldName+
             ") not yet support numbers " + sf);
       } else {
-        // replace this
         return new UniqueBlockSlotAcc(fcontext, sf, numSlots);
       }
     }
