@@ -26,7 +26,6 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LongValues;
 import org.apache.solr.schema.SchemaField;
-import org.apache.solr.search.SolrIndexSearcher;
 
 class UniqueSinglevaluedSlotAcc extends UniqueSlotAcc {
   SortedDocValues topLevel;
@@ -43,7 +42,6 @@ class UniqueSinglevaluedSlotAcc extends UniqueSlotAcc {
   @Override
   public void reset() throws IOException {
     super.reset();
-    SolrIndexSearcher searcher = fcontext.qcontext.searcher();
     topLevel = FieldUtil.getSortedDocValues(fcontext.qcontext, field, null);
     nTerms = topLevel.getValueCount();
     if (topLevel instanceof MultiDocValues.MultiSortedDocValues) {
@@ -81,6 +79,10 @@ class UniqueSinglevaluedSlotAcc extends UniqueSlotAcc {
     if (segOrd < 0) return;  // -1 means missing
     int ord = toGlobal==null ? segOrd : (int)toGlobal.get(segOrd);
 
+    collectOrdToSlot(slotNum, ord);
+  }
+
+  protected void collectOrdToSlot(int slotNum, int ord) {
     FixedBitSet bits = arr[slotNum];
     if (bits == null) {
       bits = new FixedBitSet(nTerms);
