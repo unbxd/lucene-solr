@@ -364,15 +364,7 @@ class JSONWriter extends TextResponseWriter {
       indent();
       writeKey(fname, true);
       Object val = doc.getFieldValue(fname);
-
-      // SolrDocument will now have multiValued fields represented as a Collection,
-      // even if only a single value is returned for this document.
-      if (val instanceof List) {
-        // shortcut this common case instead of going through writeVal again
-        writeArray(name,((Iterable)val).iterator());
-      } else {
-        writeVal(fname, val);
-      }
+      writeVal(fname, val);
     }
 
     if(doc.hasChildDocuments()) {
