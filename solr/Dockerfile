@@ -6,10 +6,11 @@ ENV SOLR_USER="solr" \
     SOLR_UID="8983" \
     SOLR_GROUP="solr" \
     SOLR_GID="8983" \
-    SOLR_VERSION="6.6.7-unbxd" \
     PATH="/opt/solr/bin:/opt/docker-solr/scripts:$PATH"
 
-ARG SOLR_VERSION
+ARG SOLR_ARG_VERSION
+
+ENV SOLR_VERSION=$SOLR_ARG_VERSION
 
 RUN set -e; \
   groupadd -r --gid "$SOLR_GID" "$SOLR_GROUP"; \
