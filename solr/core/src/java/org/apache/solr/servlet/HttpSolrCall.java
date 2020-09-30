@@ -18,7 +18,6 @@ package org.apache.solr.servlet;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -75,11 +74,11 @@ import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
-import org.apache.solr.common.util.ValidatingJsonMap;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.common.util.Utils;
+import org.apache.solr.common.util.ValidatingJsonMap;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
@@ -467,16 +466,6 @@ public class HttpSolrCall {
   }
 
   /**
-   * This method returns query string with internal request count (number of remote queries for a given request)
-   */
-  private String getQueryString(){
-    int internalRequestCount = queryParams.getInt(INTERNAL_REQUEST_COUNT, 0);
-    ModifiableSolrParams updatedQueryParams = new ModifiableSolrParams(queryParams);
-    updatedQueryParams.set(INTERNAL_REQUEST_COUNT, internalRequestCount + 1);
-    return updatedQueryParams.toQueryString();
-  }
-
-  /**
    * This method processes the request.
    */
   public Action call() throws IOException {
@@ -606,9 +595,13 @@ public class HttpSolrCall {
   private void remoteQuery(String coreUrl, HttpServletResponse resp) throws IOException {
     HttpRequestBase method = null;
     HttpEntity httpEntity = null;
+
+    ModifiableSolrParams updatedQueryParams = new ModifiableSolrParams(queryParams);
+    int forwardCount = queryParams.getInt(INTERNAL_REQUEST_COUNT, 0) + 1;
+    updatedQueryParams.set(INTERNAL_REQUEST_COUNT, forwardCount);
+    String queryString = updatedQueryParams.toQueryString();
     try {
-      // get query string with internal request count
-      String urlstr = coreUrl + getQueryString();
+      String urlstr = coreUrl + queryString;
 
       boolean isPostOrPutRequest = "POST".equals(req.getMethod()) || "PUT".equals(req.getMethod());
       if ("GET".equals(req.getMethod())) {
@@ -674,7 +667,7 @@ public class HttpSolrCall {
     } catch (IOException e) {
       sendError(new SolrException(
           SolrException.ErrorCode.SERVER_ERROR,
-          "Error trying to proxy request for url: " + coreUrl, e));
+          "Error trying to proxy request for url: " + coreUrl + " with _forwardCount: " + forwardCount, e));
     } finally {
       Utils.consumeFully(httpEntity);
     }
@@ -937,20 +930,19 @@ public class HttpSolrCall {
       collectionsList = new ArrayList<>();
 
     collectionsList.add(collectionName);
-    String coreUrl = getCoreUrl(collectionName, origCorename, clusterState,
-        slices, byCoreName, true);
-
     int totalReplicas = 0;
     for (Slice slice : slices){
       totalReplicas += slice.getReplicas().size();
     }
-
     // avoid making mutually recursive calls to remote nodes
+    if(queryParams.getInt(INTERNAL_REQUEST_COUNT, 0) > totalReplicas){
+      throw new SolrException(SolrException.ErrorCode.INVALID_STATE,
+          String.format(Locale.ROOT, "No active replicas found for collection: %s", collectionName));
+    }
+    String coreUrl = getCoreUrl(collectionName, origCorename, clusterState,
+        slices, byCoreName, true);
+
     if (coreUrl == null) {
-      if(queryParams.getInt(INTERNAL_REQUEST_COUNT, 0) > totalReplicas){
-        throw new SolrException(SolrException.ErrorCode.INVALID_STATE,
-            String.format(Locale.ROOT, "No active replicas found for collection: %s", collectionName));
-      }
       coreUrl = getCoreUrl(collectionName, origCorename, clusterState,
           slices, byCoreName, false);
     }
